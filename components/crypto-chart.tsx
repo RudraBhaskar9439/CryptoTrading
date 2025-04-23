@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { createChart } from "lightweight-charts"
 import { Button } from "@/components/ui/button"
 import { CandlestickChart, LineChartIcon, BarChart, Maximize2, Minimize2, Plus, Minus } from "lucide-react"
 
@@ -12,7 +11,6 @@ interface CryptoChartProps {
 
 export function CryptoChart({ symbol, timeframe }: CryptoChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
-  const chartRef = useRef<any>(null)
   const [chartType, setChartType] = useState<"candles" | "line" | "bar">("candles")
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -41,7 +39,7 @@ export function CryptoChart({ symbol, timeframe }: CryptoChartProps) {
       const close = low + Math.random() * (high - low)
 
       data.push({
-        time: time.getTime() / 1000,
+        time: time.getTime(),
         open,
         high,
         low,
@@ -59,125 +57,244 @@ export function CryptoChart({ symbol, timeframe }: CryptoChartProps) {
   useEffect(() => {
     if (!chartContainerRef.current) return
 
-    // Clear previous chart
-    if (chartRef.current) {
-      chartRef.current.remove()
-      chartRef.current = null
-    }
+    const initializeChart = async () => {
+      try {
+        // Dynamically import the library to avoid SSR issues
+        const LightweightCharts = await import("lightweight-charts")
 
-    // Create chart
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { color: "#000000" },
-        textColor: "#d1d4dc",
-      },
-      grid: {
-        vertLines: { color: "#1e222d" },
-        horzLines: { color: "#1e222d" },
-      },
-      crosshair: {
-        mode: 1, // Use numeric value instead of CrosshairMode.Normal
-      },
-      rightPriceScale: {
-        borderColor: "#1e222d",
-      },
-      timeScale: {
-        borderColor: "#1e222d",
-      },
-      handleScroll: true,
-      handleScale: true,
-    })
+        // Clear previous chart
+        chartContainerRef.current.innerHTML = ""
 
-    chartRef.current = chart
+        // Create chart
+        const chart = LightweightCharts.createChart(chartContainerRef.current, {
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight,
+          layout: {
+            background: { color: "#000000" },
+            textColor: "#d1d4dc",
+          },
+          grid: {
+            vertLines: { color: "#1e222d" },
+            horzLines: { color: "#1e222d" },
+          },
+          crosshair: {
+            mode: 1, // Normal crosshair mode
+          },
+          rightPriceScale: {
+            borderColor: "#1e222d",
+          },
+          timeScale: {
+            borderColor: "#1e222d",
+          },
+        })
 
-    // Resize chart on container resize
-    chart.applyOptions({
-      width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight,
-    })
+        // Add series based on chart type
+        const candleData = generateCandleData()
 
-    // Add series based on chart type
-    const candleData = generateCandleData()
+        if (chartType === "candles") {
+          const candleSeries = chart.addCandlestickSeries({
+            upColor: "#26a69a",
+            downColor: "#ef5350",
+            borderVisible: false,
+            wickUpColor: "#26a69a",
+            wickDownColor: "#ef5350",
+          })
 
-    if (chartType === "candles") {
-      // Create a candlestick series
-      const candleSeries = chart.addCandlestickSeries({
-        upColor: "#26a69a",
-        downColor: "#ef5350",
-        borderVisible: false,
-        wickUpColor: "#26a69a",
-        wickDownColor: "#ef5350",
-      })
+          candleSeries.setData(candleData)
+        } else if (chartType === "line") {
+          const lineSeries = chart.addLineSeries({
+            color: "#2962FF",
+            lineWidth: 2,
+          })
 
-      candleSeries.setData(candleData)
-    } else if (chartType === "line") {
-      const lineSeries = chart.addLineSeries({
-        color: "#2962FF",
-        lineWidth: 2,
-      })
+          lineSeries.setData(
+            candleData.map((item) => ({
+              time: item.time,
+              value: item.close,
+            })),
+          )
+        } else if (chartType === "bar") {
+          const barSeries = chart.addBarSeries({
+            upColor: "#26a69a",
+            downColor: "#ef5350",
+          })
 
-      lineSeries.setData(
-        candleData.map((item) => ({
-          time: item.time,
-          value: item.close,
-        })),
-      )
-    } else if (chartType === "bar") {
-      const barSeries = chart.addBarSeries({
-        upColor: "#26a69a",
-        downColor: "#ef5350",
-      })
+          barSeries.setData(candleData)
+        }
 
-      barSeries.setData(candleData)
-    }
+        // Add volume series
+        const volumeSeries = chart.addHistogramSeries({
+          color: "#26a69a",
+          priceFormat: {
+            type: "volume",
+          },
+          priceScaleId: "",
+          scaleMargins: {
+            top: 0.8,
+            bottom: 0,
+          },
+        })
 
-    // Add volume series
-    const volumeSeries = chart.addHistogramSeries({
-      color: "#26a69a",
-      priceFormat: {
-        type: "volume",
-      },
-      priceScaleId: "",
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-    })
+        volumeSeries.setData(
+          candleData.map((item) => ({
+            time: item.time,
+            value: item.volume,
+            color: item.close >= item.open ? "#26a69a" : "#ef5350",
+          })),
+        )
 
-    volumeSeries.setData(
-      candleData.map((item) => ({
-        time: item.time,
-        value: item.volume,
-        color: item.close >= item.open ? "#26a69a" : "#ef5350",
-      })),
-    )
+        // Fit content
+        chart.timeScale().fitContent()
 
-    // Fit content
-    chart.timeScale().fitContent()
+        // Handle window resize
+        const handleResize = () => {
+          if (chartContainerRef.current) {
+            chart.applyOptions({
+              width: chartContainerRef.current.clientWidth,
+              height: chartContainerRef.current.clientHeight,
+            })
+          }
+        }
 
-    // Cleanup
-    return () => {
-      if (chartRef.current) {
-        chartRef.current.remove()
-        chartRef.current = null
+        window.addEventListener("resize", handleResize)
+
+        // Return cleanup function
+        return () => {
+          window.removeEventListener("resize", handleResize)
+          chart.remove()
+        }
+      } catch (error) {
+        console.error("Error initializing chart:", error)
+        // Fallback to a simple canvas rendering
+        renderFallbackChart()
       }
+    }
+
+    // Initialize the chart
+    const chartCleanup = initializeChart()
+
+    // Cleanup function
+    return () => {
+      chartCleanup.then((cleanup) => cleanup && cleanup())
     }
   }, [chartType, symbol, timeframe])
 
-  // Handle window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (chartRef.current && chartContainerRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        })
-      }
+  // Fallback chart rendering using canvas
+  const renderFallbackChart = () => {
+    if (!chartContainerRef.current) return
+
+    // Clear previous content
+    chartContainerRef.current.innerHTML = ""
+
+    // Create canvas element
+    const canvas = document.createElement("canvas")
+    canvas.width = chartContainerRef.current.clientWidth
+    canvas.height = chartContainerRef.current.clientHeight
+    chartContainerRef.current.appendChild(canvas)
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    // Set background
+    ctx.fillStyle = "#000000"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    // Generate data
+    const data = generateCandleData()
+
+    // Find min and max values for scaling
+    let minPrice = Math.min(...data.map((d) => d.low))
+    let maxPrice = Math.max(...data.map((d) => d.high))
+    const range = maxPrice - minPrice
+    minPrice -= range * 0.05
+    maxPrice += range * 0.05
+
+    // Calculate scaling factors
+    const xScale = canvas.width / data.length
+    const yScale = canvas.height / (maxPrice - minPrice)
+
+    // Draw grid
+    ctx.strokeStyle = "#1e222d"
+    ctx.lineWidth = 0.5
+
+    // Horizontal grid lines
+    for (let i = 0; i <= 5; i++) {
+      const y = (i * canvas.height) / 5
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(canvas.width, y)
+      ctx.stroke()
+
+      // Price labels
+      const price = maxPrice - (i * (maxPrice - minPrice)) / 5
+      ctx.fillStyle = "#d1d4dc"
+      ctx.font = "10px Arial"
+      ctx.fillText(price.toFixed(2), 5, y - 5)
     }
 
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+    // Draw candles or line based on chart type
+    if (chartType === "candles" || chartType === "bar") {
+      // Draw candles
+      data.forEach((candle, i) => {
+        const x = i * xScale
+        const open = canvas.height - (candle.open - minPrice) * yScale
+        const close = canvas.height - (candle.close - minPrice) * yScale
+        const high = canvas.height - (candle.high - minPrice) * yScale
+        const low = canvas.height - (candle.low - minPrice) * yScale
+
+        // Determine if candle is up or down
+        const isUp = candle.close > candle.open
+        ctx.strokeStyle = isUp ? "#26a69a" : "#ef5350"
+        ctx.fillStyle = isUp ? "#26a69a" : "#ef5350"
+
+        // Draw wick
+        ctx.beginPath()
+        ctx.moveTo(x + xScale / 2, high)
+        ctx.lineTo(x + xScale / 2, low)
+        ctx.stroke()
+
+        // Draw body
+        if (chartType === "candles") {
+          const bodyHeight = Math.abs(close - open)
+          ctx.fillRect(
+            x + xScale * 0.2,
+            Math.min(open, close),
+            xScale * 0.6,
+            bodyHeight || 1, // Ensure at least 1px height
+          )
+        }
+      })
+    } else if (chartType === "line") {
+      // Draw line chart
+      ctx.strokeStyle = "#2962FF"
+      ctx.lineWidth = 2
+      ctx.beginPath()
+
+      data.forEach((point, i) => {
+        const x = i * xScale
+        const y = canvas.height - (point.close - minPrice) * yScale
+
+        if (i === 0) {
+          ctx.moveTo(x, y)
+        } else {
+          ctx.lineTo(x, y)
+        }
+      })
+
+      ctx.stroke()
+    }
+
+    // Draw time labels
+    ctx.fillStyle = "#d1d4dc"
+    ctx.font = "10px Arial"
+
+    for (let i = 0; i < data.length; i += Math.floor(data.length / 5)) {
+      const x = i * xScale
+      const date = new Date(data[i].time)
+      const label = date.toLocaleDateString()
+      ctx.fillText(label, x, canvas.height - 5)
+    }
+  }
 
   // Handle fullscreen toggle
   const toggleFullscreen = () => {
