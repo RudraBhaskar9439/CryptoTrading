@@ -54,6 +54,40 @@ export function CryptoChart({ symbol, timeframe }: CryptoChartProps) {
     return data
   }
 
+  // import { API_CONFIG } from '@/config/api';
+
+  // export const useKlineData = (symbol: string, interval: string) => {
+  //   const [klineData, setKlineData] = useState<any[]>([]);
+  //   const [loading, setLoading] = useState(true);
+  //   const [error, setError] = useState<string | null>(null);
+
+  //   const fetchKlineData = async () => {
+  //     try {
+  //       const response = await fetch(
+  //         `${API_CONFIG.BINANCE_API_URL}/klines?symbol=${symbol}&interval=${interval}&limit=100`
+  //       );
+  //       const data = await response.json();
+
+  //       const formattedData = data.map((item: any[]) => ({
+  //         time: item[0], // Kline open time
+  //         open: parseFloat(item[1]),
+  //         high: parseFloat(item[2]),
+  //         low: parseFloat(item[3]),
+  //         close: parseFloat(item[4]),
+  //         volume: parseFloat(item[5]),
+  //       }));
+
+  //       setKlineData(formattedData);
+  //       setLoading(false);
+  //     } catch (err) {
+  //       setError(err instanceof Error ? err.message : 'Failed to fetch data');
+  //       setLoading(false);
+  //     }
+  //   };
+
+  //   return { klineData, loading, error, refetch: fetchKlineData };
+  // };
+
   useEffect(() => {
     if (!chartContainerRef.current) return
 
